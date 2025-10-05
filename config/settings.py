@@ -10,7 +10,8 @@ CLIENT_SECRET = os.getenv('CLIENT_SECRET')
 TENANT_ID = os.getenv('TENANT_ID')
 
 # API endpoints
-AUTHORITY = f'https://login.microsoftonline.com/{TENANT_ID}'
+# For apps that support both work and personal accounts
+AUTHORITY = 'https://login.microsoftonline.com/common'
 GRAPH_API_ENDPOINT = 'https://graph.microsoft.com/v1.0'
 
 # Scopes for Microsoft Graph API

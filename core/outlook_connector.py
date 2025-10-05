@@ -20,14 +20,21 @@ class OutlookConnector:
         print("🔐 Authenticating with Microsoft Graph API...")
         print("📱 You'll need to sign in with your Microsoft account\n")
         
-        # Create MSAL application with device code flow
+        # Create MSAL PublicClientApplication for device code flow
         self.app = msal.PublicClientApplication(
             CLIENT_ID,
             authority=AUTHORITY,
         )
         
-        # Initiate device flow
-        flow = self.app.initiate_device_flow(scopes=["Mail.ReadWrite", "Mail.Send", "User.Read"])
+        # Use full scope URLs for clarity
+        scopes = [
+            "https://graph.microsoft.com/Mail.ReadWrite",
+            "https://graph.microsoft.com/Mail.Send", 
+            "https://graph.microsoft.com/User.Read"
+        ]
+        
+        # Initiate device flow with delegated scopes
+        flow = self.app.initiate_device_flow(scopes=scopes)
         
         if "user_code" not in flow:
             raise ValueError("Failed to create device flow. Check your app registration.")
@@ -42,6 +49,16 @@ class OutlookConnector:
         if "access_token" in result:
             self.access_token = result['access_token']
             print("\n✅ Authentication successful!")
+            
+            # DEBUG: Show what scopes we actually got
+            if "scope" in result:
+                print(f"🔍 DEBUG - Scopes in token: {result['scope']}")
+            else:
+                print("⚠️ WARNING: No scopes in token result")
+            
+            # DEBUG: Show token info (first 20 chars only for security)
+            print(f"🔍 DEBUG - Token preview: {self.access_token[:20]}...")
+            
             return True
         else:
             print(f"\n❌ Authentication failed!")
@@ -73,6 +90,9 @@ class OutlookConnector:
             'Content-Type': 'application/json'
         }
         
+        print(f"🔍 DEBUG - Request URL: {endpoint}")
+        print(f"🔍 DEBUG - Request params: {params}")
+        
         try:
             response = requests.get(endpoint, headers=headers, params=params)
             response.raise_for_status()
@@ -82,11 +102,27 @@ class OutlookConnector:
             return emails
             
         except requests.exceptions.HTTPError as e:
-            print(f"❌ HTTP Error: {e}")
+            print(f"\n❌ HTTP Error: {e}")
+            print(f"Status Code: {response.status_code}")
             print(f"Response: {response.text}")
+            
+            # Show response headers for debugging
+            print(f"\n🔍 DEBUG - Response Headers:")
+            for key, value in response.headers.items():
+                print(f"   {key}: {value}")
+            
+            # Try to parse error details
+            try:
+                error_details = response.json()
+                print(f"\n🔍 DEBUG - Error Details:")
+                print(f"   {error_details}")
+            except:
+                print("   (Could not parse error as JSON)")
+            
             return None
+            
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ Unexpected Error: {e}")
             return None
     
     def display_emails(self, emails):
