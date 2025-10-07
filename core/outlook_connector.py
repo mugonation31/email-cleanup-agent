@@ -66,59 +66,143 @@ class OutlookConnector:
             print(f"Description: {result.get('error_description')}")
             return False
     
-    def get_emails(self, limit=10):
-        """Fetch emails from inbox"""
+    def get_inbox_stats(self):
+        """Get counts for Focused and Other inboxes"""
         if not self.access_token:
             print("❌ Not authenticated. Call authenticate() first.")
             return None
         
-        print(f"\n📧 Fetching {limit} emails from your inbox...")
+        print("\n📊 Analyzing your inbox breakdown...")
         
-        # Graph API endpoint for messages
-        endpoint = f"{GRAPH_API_ENDPOINT}/me/messages"
-        
-        # Parameters
-        params = {
-            '$top': limit,
-            '$select': 'id,subject,from,receivedDateTime,hasAttachments,bodyPreview',
-            '$orderby': 'receivedDateTime DESC'
-        }
-        
-        # Headers
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/json'
         }
         
-        print(f"🔍 DEBUG - Request URL: {endpoint}")
-        print(f"🔍 DEBUG - Request params: {params}")
+        try:
+            # Get Focused inbox count
+            focused_url = f"{GRAPH_API_ENDPOINT}/me/mailFolders/inbox/messages?$filter=inferenceClassification eq 'focused'&$count=true&$top=1"
+            focused_response = requests.get(focused_url, headers=headers)
+            focused_response.raise_for_status()
+            
+            # Get Other inbox count
+            other_url = f"{GRAPH_API_ENDPOINT}/me/mailFolders/inbox/messages?$filter=inferenceClassification eq 'other'&$count=true&$top=1"
+            other_response = requests.get(other_url, headers=headers)
+            other_response.raise_for_status()
+            
+            focused_count = focused_response.json().get('@odata.count', 0)
+            other_count = other_response.json().get('@odata.count', 0)
+            total_count = focused_count + other_count
+            
+            print("\n" + "="*100)
+            print("📊 INBOX BREAKDOWN")
+            print("="*100)
+            print(f"   🎯 Focused: {focused_count:,} emails (important)")
+            print(f"   📫 Other:   {other_count:,} emails (newsletters, promotions)")
+            print(f"   📬 Total:   {total_count:,} emails")
+            print("="*100 + "\n")
+            
+            return {
+                'focused': focused_count,
+                'other': other_count,
+                'total': total_count
+            }
+            
+        except requests.exceptions.HTTPError as e:
+            print(f"\n❌ HTTP Error getting inbox stats: {e}")
+            print(f"Status Code: {focused_response.status_code if 'focused_response' in locals() else 'N/A'}")
+            return None
+        except Exception as e:
+            print(f"❌ Unexpected Error getting inbox stats: {e}")
+            return None
+    
+    def get_emails(self, limit=10, inbox_type='both'):
+        """
+        Fetch emails from inbox
+        
+        Args:
+            limit: Number of emails to fetch
+            inbox_type: 'focused', 'other', or 'both' (default)
+        """
+        if not self.access_token:
+            print("❌ Not authenticated. Call authenticate() first.")
+            return None
+        
+        headers = {
+            'Authorization': f'Bearer {self.access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Use the inbox endpoint (not just /me/messages) for inferenceClassification filtering
+        endpoint = f"{GRAPH_API_ENDPOINT}/me/mailFolders/inbox/messages"
+        
+        # Base parameters for all requests
+        # Note: Don't include inferenceClassification in $select when filtering by it
+        # Note: $orderby may not work with inferenceClassification filter
+        base_params = {
+            '$select': 'id,subject,from,receivedDateTime,hasAttachments,bodyPreview'
+        }
+        
+        emails = []
         
         try:
-            response = requests.get(endpoint, headers=headers, params=params)
-            response.raise_for_status()
+            if inbox_type == 'focused':
+                print(f"\n📧 Fetching {limit} emails from FOCUSED inbox...")
+                params = {**base_params, '$top': limit, '$filter': "inferenceClassification eq 'focused'"}
+                
+                response = requests.get(endpoint, headers=headers, params=params)
+                response.raise_for_status()
+                emails = response.json().get('value', [])
+                
+                # Mark emails with inbox type for display
+                for email in emails:
+                    email['_inbox_type'] = 'focused'
+                
+            elif inbox_type == 'other':
+                print(f"\n📧 Fetching {limit} emails from OTHER inbox...")
+                params = {**base_params, '$top': limit, '$filter': "inferenceClassification eq 'other'"}
+                
+                response = requests.get(endpoint, headers=headers, params=params)
+                response.raise_for_status()
+                emails = response.json().get('value', [])
+                
+                # Mark emails with inbox type for display
+                for email in emails:
+                    email['_inbox_type'] = 'other'
+                
+            elif inbox_type == 'both':
+                print(f"\n📧 Fetching {limit//2} emails from FOCUSED and {limit//2} from OTHER...")
+                
+                # Get from Focused
+                focused_params = {**base_params, '$top': limit//2, '$filter': "inferenceClassification eq 'focused'"}
+                focused_response = requests.get(endpoint, headers=headers, params=focused_params)
+                focused_response.raise_for_status()
+                focused_emails = focused_response.json().get('value', [])
+                
+                # Mark focused emails
+                for email in focused_emails:
+                    email['_inbox_type'] = 'focused'
+                
+                # Get from Other
+                other_params = {**base_params, '$top': limit//2, '$filter': "inferenceClassification eq 'other'"}
+                other_response = requests.get(endpoint, headers=headers, params=other_params)
+                other_response.raise_for_status()
+                other_emails = other_response.json().get('value', [])
+                
+                # Mark other emails
+                for email in other_emails:
+                    email['_inbox_type'] = 'other'
+                
+                emails = focused_emails + other_emails
             
-            emails = response.json().get('value', [])
             print(f"✅ Successfully fetched {len(emails)} emails!")
             return emails
             
         except requests.exceptions.HTTPError as e:
             print(f"\n❌ HTTP Error: {e}")
-            print(f"Status Code: {response.status_code}")
-            print(f"Response: {response.text}")
-            
-            # Show response headers for debugging
-            print(f"\n🔍 DEBUG - Response Headers:")
-            for key, value in response.headers.items():
-                print(f"   {key}: {value}")
-            
-            # Try to parse error details
-            try:
-                error_details = response.json()
-                print(f"\n🔍 DEBUG - Error Details:")
-                print(f"   {error_details}")
-            except:
-                print("   (Could not parse error as JSON)")
-            
+            if 'response' in locals():
+                print(f"Status Code: {response.status_code}")
+                print(f"Response: {response.text}")
             return None
             
         except Exception as e:
@@ -126,7 +210,7 @@ class OutlookConnector:
             return None
     
     def display_emails(self, emails):
-        """Pretty print email list"""
+        """Pretty print email list with inbox type labels"""
         if not emails:
             print("\n❌ No emails to display.")
             return
@@ -147,7 +231,11 @@ class OutlookConnector:
             has_attachments = "📎" if email.get('hasAttachments') else "  "
             preview = email.get('bodyPreview', '')[:80] + "..." if email.get('bodyPreview') else ""
             
-            print(f"{i}. {has_attachments} {subject}")
+            # Inbox type label
+            inbox_classification = email.get('_inbox_type', 'unknown')
+            inbox_label = "🎯 FOCUSED" if inbox_classification == 'focused' else "📫 OTHER"
+            
+            print(f"{i}. {has_attachments} [{inbox_label}] {subject}")
             print(f"   👤 From: {sender_name} <{sender_email}>")
             print(f"   📅 Date: {date}")
             print(f"   💬 Preview: {preview}")
@@ -158,13 +246,18 @@ class OutlookConnector:
 # Test the connector
 if __name__ == "__main__":
     print("="*100)
-    print("🚀 EMAIL CLEANUP AGENT - Connection Test")
+    print("🚀 EMAIL CLEANUP AGENT - Connection Test with Focused/Other Options")
     print("="*100 + "\n")
     
     connector = OutlookConnector()
     
     if connector.authenticate():
-        emails = connector.get_emails(limit=10)
+        # Show inbox breakdown
+        stats = connector.get_inbox_stats()
+        
+        # Fetch emails - you can change inbox_type to 'focused', 'other', or 'both'
+        emails = connector.get_emails(limit=10, inbox_type='both')
+        
         if emails:
             connector.display_emails(emails)
             
@@ -172,4 +265,9 @@ if __name__ == "__main__":
             print("📊 Quick Stats:")
             print(f"   Total emails fetched: {len(emails)}")
             print(f"   Emails with attachments: {sum(1 for e in emails if e.get('hasAttachments'))}")
+            
+            if stats:
+                print(f"\n💡 Your inbox has {stats['focused']:,} important emails and {stats['other']:,} other emails")
+                print(f"   That's a {(stats['other']/stats['total']*100):.1f}% spam/newsletter rate!")
+            
             print("\n✅ Setup complete! Ready to build the cleanup agents!\n")
