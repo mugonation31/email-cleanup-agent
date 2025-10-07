@@ -45,3 +45,31 @@ class DocumentPreservationAgent:
             'insurance',
             'legal', 'solicitor'
         ]
+
+    def is_vip_sender(self, sender_email):
+        """Check if email is from a VIP contact"""
+        if not sender_email or not self.vip_emails:
+            return False
+        
+        sender_lower = sender_email.lower().strip()
+        return sender_lower in self.vip_emails
+    
+    def contains_important_keywords(self, text):
+        """Check if text contains important keywords"""
+        if not text:
+            return False
+        
+        text_lower = text.lower()
+        matches = [kw for kw in self.important_keywords if kw in text_lower]
+        return len(matches) > 0, matches
+    
+    def is_important_sender(self, sender_email):
+        """Check if sender is from an important domain"""
+        if not sender_email:
+            return False
+        
+        sender_lower = sender_email.lower()
+        for domain in self.important_domains:
+            if domain in sender_lower:
+                return True
+        return False
