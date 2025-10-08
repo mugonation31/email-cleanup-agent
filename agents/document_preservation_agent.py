@@ -57,7 +57,7 @@ class DocumentPreservationAgent:
     def contains_important_keywords(self, text):
         """Check if text contains important keywords"""
         if not text:
-            return False
+            return False, []
         
         text_lower = text.lower()
         matches = [kw for kw in self.important_keywords if kw in text_lower]
@@ -144,21 +144,27 @@ class DocumentPreservationAgent:
         
         system_prompt = """You are an email classification expert. Your job is to identify emails that contain important documents or information that should be preserved.
 
-        Important categories include:
-        - Financial: Payslips, invoices, receipts, bills, bank statements, tax documents
-        - Legal: Contracts, agreements, legal notices
-        - Medical: Prescriptions, appointment confirmations, medical records
-        - Official: Government correspondence, insurance policies, identification documents
-        - Employment: Job offers, employment contracts, HR documents
-        - Education: Certificates, transcripts, qualifications
+                CRITICAL: You must respond with ONLY valid JSON. Do not include any text before or after the JSON.
 
-        Respond in JSON format with:
-        {
-            "should_preserve": true/false,
-            "confidence": "high"/"medium"/"low",
-            "reasoning": "brief explanation",
-            "category": "financial"/"legal"/"medical"/"official"/"employment"/"education"/"other"
-        }"""
+                Important categories include:
+                - Financial: Payslips, invoices, receipts, bills, bank statements, tax documents
+                - Legal: Contracts, agreements, legal notices
+                - Medical: Prescriptions, appointment confirmations, medical records
+                - Official: Government correspondence, insurance policies, identification documents
+                - Employment: Job offers, employment contracts, HR documents
+                - Education: Certificates, transcripts, qualifications
+
+               Respond ONLY with this exact JSON format:
+                {
+                    "should_preserve": true/false,
+                    "confidence": "high"/"medium"/"low",
+                    "reasoning": "1-2 sentence explanation of what the email is about and why it should/shouldn't be preserved. Be specific enough for someone to make a quick decision.",
+                    "category": "financial"/"legal"/"medical"/"official"/"employment"/"education"/"other"
+                }
+
+                Example good reasoning: "This email is about worship team scheduling for March. It doesn't contain important documents or financial information."
+                Example bad reasoning: "Not important."
+                """
 
         user_prompt = f"""Analyze this email and determine if it should be preserved:
 
@@ -180,7 +186,12 @@ class DocumentPreservationAgent:
                 HumanMessage(content=user_prompt)
             ]
             
-            response = self.llm.invoke(messages)
+            # Use JSON mode to guarantee valid JSON response
+            response = self.llm.invoke(
+                messages,
+                response_format={"type": "json_object"}
+            )
+            
             result = json.loads(response.content)
             result['method'] = 'ai_classification'
             
