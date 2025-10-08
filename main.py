@@ -31,18 +31,18 @@ def test_agent_on_real_emails():
     print("\n" + "="*100)
     stats = connector.get_inbox_stats()
     
-    # Test on Focused inbox (important emails)
+    # Test on Other inbox (important emails)
     print("\n" + "="*100)
-    print("🎯 TESTING ON FOCUSED INBOX (Important Emails)")
+    print("🎯 TESTING ON OTHER INBOX (Important Emails)")
     print("="*100)
     
-    focused_emails = connector.get_emails(limit=20, inbox_type='focused')
+    other_emails = connector.get_emails(limit=20, inbox_type='other')
     
-    if focused_emails:
-        results = agent.batch_analyze(focused_emails)
+    if other_emails:
+        results = agent.batch_analyze(other_emails)
         
         print("\n" + "="*100)
-        print("📊 FOCUSED INBOX RESULTS")
+        print("📊 OTHER INBOX RESULTS")
         print("="*100)
         print(f"✅ To Preserve: {len(results['preserve'])}")
         print(f"⚠️ Uncertain: {len(results['uncertain'])}")
@@ -61,6 +61,10 @@ def test_agent_on_real_emails():
     print("\n" + "="*100)
     print("✅ Analysis Complete!")
     print("="*100 + "\n")
+
+    if stats:
+        print(f"\n💡 Your inbox has {stats['focused']:,} important emails and {stats['other']:,} other emails")
+        print(f"   That's a {(stats['other']/stats['total']*100):.1f}% spam/newsletter rate!")
 
 if __name__ == "__main__":
     test_agent_on_real_emails()
