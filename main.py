@@ -116,11 +116,143 @@ def test_classifier_on_real_emails():
     
     print("\n✅ Classification Complete!\n")
 
+def test_all_agents_on_real_emails():
+        """Test all three agents working together on real emails"""
+    
+        print("="*100)
+        print("🤖 ALL AGENTS WORKING TOGETHER - Real Email Analysis")
+        print("="*100 + "\n")
+        
+        # Initialize components
+        print("📧 Connecting to Outlook...")
+        connector = OutlookConnector()
+        
+        if not connector.authenticate():
+            print("❌ Authentication failed!")
+            return
+        
+        print("\n🤖 Initializing All Agents...")
+        from agents.document_preservation_agent import DocumentPreservationAgent
+        from agents.classifier_agent import ClassifierAgent
+        from agents.spam_detector_agent import SpamDetectorAgent
+        
+        doc_agent = DocumentPreservationAgent()
+        classifier_agent = ClassifierAgent()
+        spam_agent = SpamDetectorAgent()
+        
+        print(f"   ✅ Document Preservation Agent ready")
+        print(f"   ✅ Classifier Agent ready")
+        print(f"   ✅ Spam Detector Agent ready")
+        if doc_agent.vip_emails:
+            print(f"   🔒 VIP Protection: {len(doc_agent.vip_emails)} email(s)")
+        
+        # Get inbox stats
+        print("\n" + "="*100)
+        stats = connector.get_inbox_stats()
+        
+        # Test on Other inbox (where all agents are most useful)
+        print("\n" + "="*100)
+        print("🎯 TESTING ALL AGENTS ON OTHER INBOX")
+        print("="*100)
+        
+        other_emails = connector.get_emails(limit=50, inbox_type='other')
+        
+        if not other_emails:
+            print("❌ No emails fetched!")
+            return
+        
+        print(f"\n🔍 Analyzing {len(other_emails)} emails with all 3 agents...\n")
+        
+        # Collect results from all agents
+        combined_results = []
+        
+        for i, email in enumerate(other_emails, 1):
+            subject = email.get('subject', 'No Subject')[:60]
+            
+            # Agent 1: Document Preservation
+            doc_analysis = doc_agent.analyze_email(email)
+            
+            # Agent 2: Classifier
+            classification = classifier_agent.classify_email(email)
+            
+            # Agent 3: Spam Detector
+            spam_analysis = spam_agent.detect_spam(email)
+            
+            combined_results.append({
+                'email': email,
+                'document': doc_analysis,
+                'classification': classification,
+                'spam': spam_analysis
+            })
+            
+            # Display combined analysis
+            preserve_icon = "🛡️" if doc_analysis['should_preserve'] else "  "
+            category_icons = {
+                'urgent': '🚨', 'personal': '📧', 'newsletter': '📰',
+                'promotional': '🛍️', 'informational': '📋', 'spam': '⚠️'
+            }
+            cat_icon = category_icons.get(classification['category'], '📧')
+            spam_icon = "⚠️" if spam_analysis['is_spam'] else "✅"
+            
+            print(f"{i}. {preserve_icon} {cat_icon} {spam_icon} {subject}")
+            print(f"   Preserve: {doc_analysis['should_preserve']} | Category: {classification['category']} | Spam Score: {spam_analysis['spam_score']}/100")
+            print()
+        
+        # Generate summary statistics
+        print("\n" + "="*100)
+        print("📊 COMBINED ANALYSIS SUMMARY")
+        print("="*100 + "\n")
+        
+        # Document Preservation Stats
+        preserve_count = sum(1 for r in combined_results if r['document']['should_preserve'])
+        print(f"🛡️ DOCUMENT PRESERVATION:")
+        print(f"   To Preserve: {preserve_count} ({preserve_count/len(other_emails)*100:.1f}%)")
+        print(f"   Safe to Process: {len(other_emails) - preserve_count} ({(len(other_emails) - preserve_count)/len(other_emails)*100:.1f}%)")
+        
+        # Classification Stats
+        print(f"\n🏷️ CLASSIFICATION:")
+        categories = {}
+        for r in combined_results:
+            cat = r['classification']['category']
+            categories[cat] = categories.get(cat, 0) + 1
+        
+        for category, count in sorted(categories.items(), key=lambda x: x[1], reverse=True):
+            icon = category_icons.get(category, '📧')
+            percentage = (count / len(other_emails)) * 100
+            print(f"   {icon} {category.capitalize()}: {count} ({percentage:.1f}%)")
+        
+        # Spam Detection Stats
+        spam_count = sum(1 for r in combined_results if r['spam']['is_spam'])
+        uncertain_count = sum(1 for r in combined_results if r['spam']['is_spam'] and r['spam']['confidence'] != 'high')
+        
+        print(f"\n⚠️ SPAM DETECTION:")
+        print(f"   Spam/Phishing: {spam_count} ({spam_count/len(other_emails)*100:.1f}%)")
+        print(f"   Uncertain (needs review): {uncertain_count}")
+        print(f"   Legitimate: {len(other_emails) - spam_count} ({(len(other_emails) - spam_count)/len(other_emails)*100:.1f}%)")
+        
+        # Cleanup Potential
+        safe_to_delete = len([r for r in combined_results 
+                            if not r['document']['should_preserve'] 
+                            and r['classification']['category'] in ['newsletter', 'promotional', 'spam']
+                            and not r['spam']['is_spam']])
+        
+        print(f"\n🗑️ CLEANUP POTENTIAL:")
+        print(f"   Safe to delete: {safe_to_delete} emails ({safe_to_delete/len(other_emails)*100:.1f}%)")
+        print(f"   (Newsletters/Promos that aren't documents or spam)")
+        
+        print("\n" + "="*100)
+        print("✅ All Agents Analysis Complete!")
+        print("="*100 + "\n")
 
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == 'classify':
-        test_classifier_on_real_emails()
-    else:
-        test_agent_on_real_emails()
+        import sys
+        
+        if len(sys.argv) > 1:
+            if sys.argv[1] == 'classify':
+                test_classifier_on_real_emails()
+            elif sys.argv[1] == 'all':
+                test_all_agents_on_real_emails()
+            else:
+                test_agent_on_real_emails()
+        else:
+            test_agent_on_real_emails()
