@@ -244,15 +244,119 @@ def test_all_agents_on_real_emails():
         print("✅ All Agents Analysis Complete!")
         print("="*100 + "\n")
 
-if __name__ == "__main__":
-        import sys
+def test_unwanted_agent_on_real_emails():
+    """Test the Unwanted Agent on real emails"""
+    
+    print("="*100)
+    print("🗑️ UNWANTED EMAIL AGENT - Real Email Analysis")
+    print("="*100 + "\n")
+    
+    # Initialize components
+    print("📧 Connecting to Outlook...")
+    connector = OutlookConnector()
+    
+    if not connector.authenticate():
+        print("❌ Authentication failed!")
+        return
+    
+    print("\n🤖 Initializing Unwanted Agent...")
+    from agents.unwanted_agent import UnwantedAgent
+    agent = UnwantedAgent()
+    
+    # Get inbox stats
+    print("\n" + "="*100)
+    stats = connector.get_inbox_stats()
+    
+    # Test on Other inbox (where unwanted emails are most common)
+    print("\n" + "="*100)
+    print("🎯 TESTING UNWANTED AGENT ON OTHER INBOX")
+    print("="*100)
+    
+    other_emails = connector.get_emails(limit=50, inbox_type='other')
+    
+    if not other_emails:
+        print("❌ No emails fetched!")
+        return
+    
+    print(f"\n🔍 Analyzing {len(other_emails)} emails for unwanted content...\n")
+    
+    results = agent.batch_analyze_unwanted(other_emails)
+    
+    # Generate detailed statistics
+    print("\n" + "="*100)
+    print("📊 UNWANTED EMAIL ANALYSIS RESULTS")
+    print("="*100 + "\n")
+    
+    print(f"🗑️ UNWANTED EMAILS: {len(results['unwanted'])}")
+    print(f"⚠️ UNCERTAIN (needs review): {len(results['uncertain'])}")
+    print(f"✅ WANTED EMAILS: {len(results['wanted'])}")
+    
+    # Age breakdown for unwanted emails
+    if results['unwanted']:
+        print(f"\n📅 UNWANTED EMAIL AGE BREAKDOWN:")
+        age_groups = {'2+ years': 0, '1-2 years': 0, '6-12 months': 0, '0-6 months': 0}
         
-        if len(sys.argv) > 1:
-            if sys.argv[1] == 'classify':
-                test_classifier_on_real_emails()
-            elif sys.argv[1] == 'all':
-                test_all_agents_on_real_emails()
+        for item in results['unwanted']:
+            age_days = item['analysis']['indicators']['age_days']
+            if age_days >= 730:
+                age_groups['2+ years'] += 1
+            elif age_days >= 365:
+                age_groups['1-2 years'] += 1
+            elif age_days >= 180:
+                age_groups['6-12 months'] += 1
             else:
-                test_agent_on_real_emails()
+                age_groups['0-6 months'] += 1
+        
+        for age_range, count in age_groups.items():
+            if count > 0:
+                print(f"   {age_range}: {count} emails")
+    
+    # Pattern breakdown
+    if results['unwanted']:
+        print(f"\n🏷️ UNWANTED EMAIL PATTERNS:")
+        pattern_counts = {
+            'newsletter': 0,
+            'social': 0,
+            'marketing': 0,
+            'event': 0
+        }
+        
+        for item in results['unwanted']:
+            patterns = item['analysis']['indicators'].get('patterns', {})
+            for pattern_type, found in patterns.items():
+                if found:
+                    pattern_counts[pattern_type] += 1
+        
+        for pattern_type, count in pattern_counts.items():
+            if count > 0:
+                print(f"   {pattern_type.capitalize()}: {count} emails")
+    
+    # Cleanup potential
+    unwanted_percentage = (len(results['unwanted']) / len(other_emails)) * 100
+    
+    print(f"\n🗑️ CLEANUP POTENTIAL:")
+    print(f"   Unwanted: {len(results['unwanted'])} emails ({unwanted_percentage:.1f}%)")
+    print(f"   Extrapolated to full 'Other' inbox ({stats['other']:,} emails):")
+    extrapolated = int((len(results['unwanted']) / len(other_emails)) * stats['other'])
+    print(f"   → Potentially ~{extrapolated:,} unwanted emails could be cleaned up!")
+    
+    print("\n" + "="*100)
+    print("✅ Unwanted Agent Analysis Complete!")
+    print("="*100 + "\n")
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'classify':
+            test_classifier_on_real_emails()
+        elif sys.argv[1] == 'all':
+            test_all_agents_on_real_emails()
+        elif sys.argv[1] == 'unwanted':
+            test_unwanted_agent_on_real_emails()
         else:
             test_agent_on_real_emails()
+    else:
+        test_agent_on_real_emails()
+    
+    
