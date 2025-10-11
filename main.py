@@ -344,6 +344,119 @@ def test_unwanted_agent_on_real_emails():
     print("✅ Unwanted Agent Analysis Complete!")
     print("="*100 + "\n")
 
+def test_multi_agent_on_real_emails():
+    """Test the Multi-Agent Orchestrator on real emails"""
+    
+    print("="*100)
+    print("🎭 MULTI-AGENT ORCHESTRATOR - Real Email Analysis")
+    print("="*100 + "\n")
+    
+    # Initialize components
+    print("📧 Connecting to Outlook...")
+    connector = OutlookConnector()
+    
+    if not connector.authenticate():
+        print("❌ Authentication failed!")
+        return
+    
+    print("\n🤖 Initializing Multi-Agent Orchestrator...")
+    from core.multi_agent_orchestrator import MultiAgentOrchestrator
+    orchestrator = MultiAgentOrchestrator()
+    
+    # Get inbox stats
+    print("\n" + "="*100)
+    stats = connector.get_inbox_stats()
+    
+    # Test on Other inbox
+    print("\n" + "="*100)
+    print("🎯 TESTING MULTI-AGENT SYSTEM ON OTHER INBOX")
+    print("="*100)
+    
+    other_emails = connector.get_emails(limit=50, inbox_type='other')
+    
+    if not other_emails:
+        print("❌ No emails fetched!")
+        return
+    
+    print(f"\n🔄 Running multi-agent analysis on {len(other_emails)} emails...\n")
+    
+    results = orchestrator.batch_analyze(other_emails)
+    
+    # Generate detailed statistics
+    print("\n" + "="*100)
+    print("📊 MULTI-AGENT ORCHESTRATION RESULTS")
+    print("="*100 + "\n")
+    
+    print(f"🛡️ PRESERVE: {len(results['preserve'])} emails")
+    print(f"🗑️ DELETE: {len(results['delete'])} emails")
+    print(f"👁️ REVIEW: {len(results['review'])} emails")
+    
+    # Breakdown of preserve reasons
+    if results['preserve']:
+        print(f"\n🛡️ PRESERVE BREAKDOWN:")
+        preserve_reasons = {}
+        for item in results['preserve']:
+            analysis = item['analysis']
+            if analysis['document_analysis'].get('should_preserve'):
+                preserve_reasons['Important Documents'] = preserve_reasons.get('Important Documents', 0) + 1
+            elif analysis['classification']['category'] == 'personal':
+                preserve_reasons['Personal Emails'] = preserve_reasons.get('Personal Emails', 0) + 1
+            elif analysis['classification']['category'] == 'urgent':
+                preserve_reasons['Urgent Emails'] = preserve_reasons.get('Urgent Emails', 0) + 1
+            else:
+                preserve_reasons['Other'] = preserve_reasons.get('Other', 0) + 1
+        
+        for reason, count in preserve_reasons.items():
+            print(f"   {reason}: {count}")
+    
+    # Breakdown of delete reasons
+    if results['delete']:
+        print(f"\n🗑️ DELETE BREAKDOWN:")
+        delete_categories = {}
+        for item in results['delete']:
+            category = item['analysis']['classification']['category']
+            delete_categories[category] = delete_categories.get(category, 0) + 1
+        
+        for category, count in delete_categories.items():
+            print(f"   {category.capitalize()}: {count}")
+    
+    # Breakdown of review reasons
+    if results['review']:
+        print(f"\n👁️ REVIEW BREAKDOWN:")
+        review_reasons = {}
+        for item in results['review']:
+            analysis = item['analysis']
+            if analysis['spam_analysis'].get('is_spam'):
+                review_reasons['Spam/Phishing'] = review_reasons.get('Spam/Phishing', 0) + 1
+            elif analysis['confidence'] == 'low':
+                review_reasons['Low Confidence'] = review_reasons.get('Low Confidence', 0) + 1
+            else:
+                review_reasons['Other'] = review_reasons.get('Other', 0) + 1
+        
+        for reason, count in review_reasons.items():
+            print(f"   {reason}: {count}")
+    
+    # Cleanup potential
+    delete_percentage = (len(results['delete']) / len(other_emails)) * 100
+    
+    print(f"\n🗑️ CLEANUP POTENTIAL:")
+    print(f"   Safe to delete: {len(results['delete'])} emails ({delete_percentage:.1f}%)")
+    print(f"   Extrapolated to full 'Other' inbox ({stats['other']:,} emails):")
+    extrapolated = int((len(results['delete']) / len(other_emails)) * stats['other'])
+    print(f"   → Potentially ~{extrapolated:,} emails could be safely deleted!")
+    
+    print(f"\n🛡️ PROTECTION STATUS:")
+    preserve_percentage = (len(results['preserve']) / len(other_emails)) * 100
+    print(f"   Protected: {len(results['preserve'])} emails ({preserve_percentage:.1f}%)")
+    
+    print(f"\n👁️ HUMAN REVIEW NEEDED:")
+    review_percentage = (len(results['review']) / len(other_emails)) * 100
+    print(f"   Needs review: {len(results['review'])} emails ({review_percentage:.1f}%)")
+    
+    print("\n" + "="*100)
+    print("✅ Multi-Agent Orchestration Complete!")
+    print("="*100 + "\n")
+
 if __name__ == "__main__":
     import sys
     
@@ -354,6 +467,8 @@ if __name__ == "__main__":
             test_all_agents_on_real_emails()
         elif sys.argv[1] == 'unwanted':
             test_unwanted_agent_on_real_emails()
+        elif sys.argv[1] == 'multi':
+            test_multi_agent_on_real_emails()
         else:
             test_agent_on_real_emails()
     else:
