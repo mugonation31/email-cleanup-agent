@@ -149,7 +149,12 @@ def main():
     
     # Create bot instance (shared across handlers)
     bot = EmailCleanupBot()
-    
+
+    # Create deletion manager and connect to bot 
+    from core.deletion_manager import DeletionManager 
+    deletion_manager = DeletionManager(outlook)  
+    bot.deletion_manager = deletion_manager  
+        
     # Store bot in application context so handlers can access it
     application.bot_data['cleanup_bot'] = bot
     application.bot_data['orchestrator'] = orchestrator

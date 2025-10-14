@@ -26,6 +26,9 @@ class EmailCleanupBot:
         
         # Store current proposal for command handling
         self.current_proposal = None
+
+        # Add deletion manager (will be set by bot_runner)
+        self.deletion_manager = None
     
     def format_email_preview(self, email, index):
         """Format a single email for display"""
@@ -229,16 +232,49 @@ class EmailCleanupBot:
     async def handle_yes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /yes command - approve all deletions"""
         if not self.current_proposal:
-            await update.message.reply_text("❌ No active proposal. Run analysis first!")
+            await update.message.reply_text("❌ No active proposal. Run /analyze first!")
             return
         
-        count = len(self.current_proposal['emails'])
+        emails = self.current_proposal['emails']
+        count = len(emails)
+        proposal_id = self.current_proposal['timestamp'].strftime('%Y%m%d_%H%M%S')
+        
+        # Send confirmation
         await self.send_confirmation('approved', count)
         
-        # TODO: Actually delete emails (we'll implement this later)
-        # For now, just simulate
-        await asyncio.sleep(2)
-        await self.send_deletion_complete(count)
+        # Check if deletion manager is available
+        if not self.deletion_manager:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text="⚠️ Deletion manager not initialized. Contact support."
+            )
+            return
+        
+        # REAL DELETION with backup
+        try:
+            results = self.deletion_manager.delete_emails(
+                emails,
+                proposal_id=proposal_id,
+                create_backup=True
+            )
+            
+            # Send completion message with real results
+            await self.send_deletion_complete(
+                deleted_count=results['success'],
+                errors=results['failed']
+            )
+            
+            if results['failed'] > 0:
+                error_msg = f"⚠️ {results['failed']} emails failed to delete:\n"
+                for error in results['errors'][:5]:  # Show first 5 errors
+                    error_msg += f"• {error['subject']}: {error['error']}\n"
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=error_msg
+                )
+            
+        except Exception as e:
+            await self.send_error(f"Deletion failed: {str(e)}")
         
         # Clear proposal
         self.current_proposal = None
@@ -339,6 +375,14 @@ async def test_bot():
     
     # Initialize bot
     bot = EmailCleanupBot()
+
+    # Create deletion manager and connect to bot
+    from core.deletion_manager import DeletionManager
+    deletion_manager = DeletionManager(outlook)
+    bot.deletion_manager = deletion_manager  # ← Connect deletion manager to bot
+
+    # Store bot in application context so handlers can access it
+    application.bot_data['cleanup_bot'] = bot
     
     # Send test proposal
     print("📤 Sending test deletion proposal to Telegram...")
