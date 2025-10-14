@@ -24,6 +24,10 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 VIP_EMAILS_RAW = os.getenv('VIP_EMAILS', '')
 VIP_EMAILS = [email.strip().lower() for email in VIP_EMAILS_RAW.split(',') if email.strip()]
 
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')  
+
 def validate_config():
     """Check if all required environment variables are set"""
     required = ['CLIENT_ID', 'CLIENT_SECRET', 'TENANT_ID', 'OPENAI_API_KEY']

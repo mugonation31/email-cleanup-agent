@@ -1,8 +1,10 @@
+import os
 import msal
 import requests
 from config.settings import (
     CLIENT_ID, 
     CLIENT_SECRET, 
+    TENANT_ID,
     AUTHORITY, 
     GRAPH_API_ENDPOINT, 
     SCOPES
@@ -12,70 +14,121 @@ class OutlookConnector:
     """Connects to Microsoft Outlook via Graph API"""
     
     def __init__(self):
-        self.access_token = None
-        self.app = None
+        """Initialize the Outlook connector with persistent token cache"""
+        self.client_id = CLIENT_ID
+        self.client_secret = CLIENT_SECRET
+        self.tenant_id = TENANT_ID
+        self.token = None
+        self.cache_file = "token_cache.bin"
+
+        # Load or create token cache
+        self.cache = msal.SerializableTokenCache()
+
+        # Load existing cache if it exists
+        if os.path.exists(self.cache_file):
+            with open(self.cache_file, 'r') as f:
+                self.cache.deserialize(f.read())
+            print(f"📦 Loaded cached tokens from {self.cache_file}")
+
+        # Always use PublicClientApplication for device code flow
+        # (ConfidentialClientApplication doesn't support device flow, even if we have a client secret)
+        # Use 'common' authority to support both work/school and personal Microsoft accounts
+        self.app = msal.PublicClientApplication(
+            self.client_id,
+            authority="https://login.microsoftonline.com/common",
+            token_cache=self.cache
+        )
         
     def authenticate(self):
         """Authenticate with Microsoft Graph API using device code flow"""
         print("🔐 Authenticating with Microsoft Graph API...")
-        print("📱 You'll need to sign in with your Microsoft account\n")
-        
-        # Create MSAL PublicClientApplication for device code flow
-        self.app = msal.PublicClientApplication(
-            CLIENT_ID,
-            authority=AUTHORITY,
-        )
-        
-        # Use full scope URLs for clarity
+
         scopes = [
             "https://graph.microsoft.com/Mail.ReadWrite",
-            "https://graph.microsoft.com/Mail.Send", 
+            "https://graph.microsoft.com/Mail.Send",
             "https://graph.microsoft.com/User.Read"
         ]
-        
-        # Initiate device flow with delegated scopes
+
+        # Try to get token from cache first
+        accounts = self.app.get_accounts()
+        if accounts:
+            print("🔍 Found cached account, attempting silent authentication...")
+            result = self.app.acquire_token_silent(scopes, account=accounts[0])
+            if result and "access_token" in result:
+                self.token = result['access_token']
+
+                # Save refreshed cache to disk
+                if self.cache.has_state_changed:
+                    with open(self.cache_file, 'w') as f:
+                        f.write(self.cache.serialize())
+                    print(f"💾 Token cache refreshed and saved")
+
+                print("✅ Authentication successful using cached token!")
+                return True
+
+        # No cached token, do device code flow
+        print("📱 You'll need to sign in with your Microsoft account\n")
+
         flow = self.app.initiate_device_flow(scopes=scopes)
-        
+
         if "user_code" not in flow:
-            raise ValueError("Failed to create device flow. Check your app registration.")
-        
-        # Display instructions to user
-        print(flow["message"])
-        print("\n⏳ Waiting for you to complete sign-in...")
-        
-        # Wait for user to authenticate
+            print("❌ Failed to create device flow")
+            return False
+
+        print(f"To sign in, use a web browser to open the page {flow['message'].split('page ')[1].split(' and')[0]} and enter the code {flow['user_code']} to authenticate.\n")
+        print("⏳ Waiting for you to complete sign-in...\n")
+
         result = self.app.acquire_token_by_device_flow(flow)
-        
+
         if "access_token" in result:
-            self.access_token = result['access_token']
-            print("\n✅ Authentication successful!")
-            
-            # DEBUG: Show what scopes we actually got
-            if "scope" in result:
-                print(f"🔍 DEBUG - Scopes in token: {result['scope']}")
-            else:
-                print("⚠️ WARNING: No scopes in token result")
-            
-            # DEBUG: Show token info (first 20 chars only for security)
-            print(f"🔍 DEBUG - Token preview: {self.access_token[:20]}...")
-            
+            self.token = result['access_token']
+
+            # Save token cache to disk
+            if self.cache.has_state_changed:
+                with open(self.cache_file, 'w') as f:
+                    f.write(self.cache.serialize())
+                print(f"💾 Token cache saved")
+
+            print("✅ Authentication successful!")
             return True
         else:
-            print(f"\n❌ Authentication failed!")
+            print("❌ Authentication failed!")
             print(f"Error: {result.get('error')}")
             print(f"Description: {result.get('error_description')}")
             return False
     
+    def validate_token(self):
+        """Test if the current token is valid by making a simple API call"""
+        if not self.token:
+            return False
+
+        try:
+            headers = {'Authorization': f'Bearer {self.token}'}
+            response = requests.get(
+                'https://graph.microsoft.com/v1.0/me',
+                headers=headers,
+                timeout=5
+            )
+            if response.status_code == 200:
+                print("✅ Token validated successfully")
+                return True
+            else:
+                print(f"⚠️ Token validation failed with status {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"⚠️ Token validation failed: {e}")
+            return False      
+    
     def get_inbox_stats(self):
         """Get counts for Focused and Other inboxes"""
-        if not self.access_token:
+        if not self.token:
             print("❌ Not authenticated. Call authenticate() first.")
             return None
         
         print("\n📊 Analyzing your inbox breakdown...")
         
         headers = {
-            'Authorization': f'Bearer {self.access_token}',
+            'Authorization': f'Bearer {self.token}',
             'Content-Type': 'application/json'
         }
         
@@ -119,17 +172,17 @@ class OutlookConnector:
     def get_emails(self, limit=10, inbox_type='both'):
         """
         Fetch emails from inbox
-        
+
         Args:
             limit: Number of emails to fetch
             inbox_type: 'focused', 'other', or 'both' (default)
         """
-        if not self.access_token:
+        if not self.token:
             print("❌ Not authenticated. Call authenticate() first.")
             return None
         
         headers = {
-            'Authorization': f'Bearer {self.access_token}',
+            'Authorization': f'Bearer {self.token}',
             'Content-Type': 'application/json'
         }
         

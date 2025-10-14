@@ -66,6 +66,7 @@ pydantic-settings==2.11.0
 pydantic_core==2.33.2
 PyJWT==2.10.1
 python-dotenv==1.0.0
+python-telegram-bot==22.5
 PyYAML==6.0.3
 regex==2025.9.18
 requests==2.32.5
