@@ -1,32 +1,13 @@
 # Environment variables
 .env
 
-# Virtual environment
-venv/
-env/
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-
-# IDE
-.vscode/
-.idea/
-
-# Data files
-data/*
-exports/*
-*.log
-.env
-token_cache.bin
-
 # Token cache (contains secrets!)
 token_cache.bin
 
-# Test files (not needed in repo)
-test_auth.py
-diagnose_permissions.py
+# Virtual environment
+venv/
+env/
+ENV/
 
 # Python cache
 __pycache__/
@@ -40,17 +21,21 @@ __pycache__/
 dist/
 build/
 
-# Virtual environment
-venv/
-ENV/
-env/
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Data files
+data/*
+exports/*
+*.log
+
+# Test files (not needed in repo)
+test_auth.py
+diagnose_permissions.py
 
 # OS
 .DS_Store
