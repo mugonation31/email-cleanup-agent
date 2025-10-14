@@ -19,3 +19,39 @@ data/*
 exports/*
 *.log
 .env
+token_cache.bin
+
+# Token cache (contains secrets!)
+token_cache.bin
+
+# Test files (not needed in repo)
+test_auth.py
+diagnose_permissions.py
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
