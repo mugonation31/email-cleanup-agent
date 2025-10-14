@@ -40,3 +40,4 @@ diagnose_permissions.py
 # OS
 .DS_Store
 Thumbs.db
+email_backups/
