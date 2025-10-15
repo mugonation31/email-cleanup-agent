@@ -94,12 +94,12 @@ class EmailCleanupBot:
         message += f"🎯 *Confidence:* High (all agents agree)\n\n"
         
         # Commands
-        message += "🤔 *What would you like to do?*\n\n"
-        message += "Reply with:\n"
-        message += "✅ `/yes` - Delete all\n"
-        message += "❌ `/no` - Keep all\n"
-        message += "🎯 `/except 1,3,5` - Delete all except those\n"
-        message += "📄 `/details` - See full list\n"
+        message += "\n\n💡 Reply with:\n"
+        message += "✅ /yes - Delete all\n"
+        message += "❌ /no - Keep all\n"
+        message += "🎯 /delete_only 5,10 - Delete ONLY those (ranges: 1-5,10)\n"
+        message += "🎯 /except 1,3,5 - Keep those, delete rest\n"
+        message += "📄 /details - See full list"
         
         return message
     
@@ -126,8 +126,7 @@ class EmailCleanupBot:
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=message,
-                parse_mode='Markdown'
+                text=message
             )
             return True
         except Exception as e:
@@ -166,8 +165,7 @@ class EmailCleanupBot:
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=message,
-                parse_mode='Markdown'
+                text=message
             )
         except Exception as e:
             print(f"❌ Error sending confirmation: {e}")
@@ -186,8 +184,7 @@ class EmailCleanupBot:
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=message,
-                parse_mode='Markdown'
+                text=message
             )
         except Exception as e:
             print(f"❌ Error sending completion message: {e}")
@@ -199,8 +196,7 @@ class EmailCleanupBot:
         try:
             await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=message,
-                parse_mode='Markdown'
+                text=message
             )
         except Exception as e:
             print(f"❌ Error sending error message: {e}")
@@ -227,6 +223,49 @@ class EmailCleanupBot:
             
             return indices
         except:
+            return []
+    
+    def parse_number_range(self, text):
+        """
+        Parse numbers and ranges from command
+        Examples: "1,5,10" or "1-5,10,15-20"
+        Returns: list of integers
+        """
+        # Remove the command part
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            return []
+        
+        number_text = parts[1]
+        numbers = set()
+        
+        try:
+            # Split by comma
+            for part in number_text.split(','):
+                part = part.strip()
+                
+                # Check if it's a range (e.g., "1-5")
+                if '-' in part:
+                    try:
+                        start, end = part.split('-')
+                        start = int(start.strip())
+                        end = int(end.strip())
+                        
+                        # Add all numbers in range
+                        numbers.update(range(start, end + 1))
+                    except:
+                        continue
+                else:
+                    # Single number
+                    try:
+                        numbers.add(int(part))
+                    except:
+                        continue
+            
+            return sorted(list(numbers))
+        
+        except Exception as e:
+            print(f"❌ Error parsing numbers: {e}")
             return []
     
     async def handle_yes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -291,26 +330,146 @@ class EmailCleanupBot:
         # Clear proposal
         self.current_proposal = None
     
-    async def handle_except_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /except command - delete all except specified"""
+    async def handle_delete_only_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /delete_only command - delete ONLY specified indices"""
         if not self.current_proposal:
-            await update.message.reply_text("❌ No active proposal. Run analysis first!")
+            await update.message.reply_text("❌ No active proposal. Run /analyze first!")
             return
         
+        # Parse numbers (supports ranges like 1-5,10,15-20)
+        indices_to_delete = self.parse_number_range(update.message.text)
+        
+        if not indices_to_delete:
+            await update.message.reply_text(
+                "❌ Invalid format!\n"
+                "Examples:\n"
+                "  /delete_only 5,10,15\n"
+                "  /delete_only 1-5,10,15-20\n"
+                "  /delete_only 1-30"
+            )
+            return
+        
+        # Filter emails to delete (ONLY specified indices)
+        all_emails = self.current_proposal['emails']
+        emails_to_delete = [email for i, email in enumerate(all_emails, 1) if i in indices_to_delete]
+        emails_to_keep = [email for i, email in enumerate(all_emails, 1) if i not in indices_to_delete]
+        
+        if not emails_to_delete:
+            await update.message.reply_text("❌ No valid email indices found!")
+            return
+        
+        delete_count = len(emails_to_delete)
+        keep_count = len(emails_to_keep)
+        proposal_id = self.current_proposal['timestamp'].strftime('%Y%m%d_%H%M%S')
+        
+        # Send confirmation
+        confirmation_msg = (
+            f"🎯 DELETE ONLY SPECIFIED\n\n"
+            f"🗑️ Deleting {delete_count} email(s): {', '.join(map(str, sorted(indices_to_delete)))}\n"
+            f"🛡️ Keeping {keep_count} email(s)\n\n"
+            f"💾 Creating backup first..."
+        )
+        await self.bot.send_message(chat_id=self.chat_id, text=confirmation_msg)
+        
+        # Check if deletion manager is available
+        if not self.deletion_manager:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text="⚠️ Deletion manager not initialized. Contact support."
+            )
+            return
+        
+        # REAL DELETION with backup
+        try:
+            results = self.deletion_manager.delete_emails(
+                emails_to_delete,
+                proposal_id=proposal_id,
+                create_backup=True
+            )
+            
+            # Send completion message with real results
+            await self.send_deletion_complete(
+                deleted_count=results['success'],
+                errors=results['failed']
+            )
+            
+            if results['failed'] > 0:
+                error_msg = f"⚠️ {results['failed']} emails failed to delete:\n"
+                for error in results['errors'][:5]:
+                    error_msg += f"• {error['subject']}: {error['error']}\n"
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=error_msg
+                )
+            
+        except Exception as e:
+            await self.send_error(f"Deletion failed: {str(e)}")
+        
+        # Clear proposal
+        self.current_proposal = None
+
+    async def handle_except_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /except command - delete all except specified indices"""
+        if not self.current_proposal:
+            await update.message.reply_text("❌ No active proposal. Run /analyze first!")
+            return
+        
+        # Parse exception numbers
         excluded = self.parse_except_command(update.message.text)
         
         if not excluded:
             await update.message.reply_text("❌ Invalid format. Use: /except 1,3,5")
             return
         
-        total = len(self.current_proposal['emails'])
-        await self.send_confirmation('partial', total, excluded)
+        # Filter emails to delete (all except specified indices)
+        all_emails = self.current_proposal['emails']
+        emails_to_delete = [email for i, email in enumerate(all_emails, 1) if i not in excluded]
+        emails_to_keep = [email for i, email in enumerate(all_emails, 1) if i in excluded]
         
-        # TODO: Delete all except excluded indices
-        # For now, just simulate
-        await asyncio.sleep(2)
-        deleted = total - len(excluded)
-        await self.send_deletion_complete(deleted)
+        if not emails_to_delete:
+            await update.message.reply_text("❌ No emails to delete! You excluded everything!")
+            return
+        
+        delete_count = len(emails_to_delete)
+        keep_count = len(emails_to_keep)
+        proposal_id = self.current_proposal['timestamp'].strftime('%Y%m%d_%H%M%S')
+        
+        # Send partial approval confirmation
+        await self.send_confirmation('partial', delete_count, excluded)
+        
+        # Check if deletion manager is available
+        if not self.deletion_manager:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text="⚠️ Deletion manager not initialized. Contact support."
+            )
+            return
+        
+        # REAL DELETION with backup
+        try:
+            results = self.deletion_manager.delete_emails(
+                emails_to_delete,
+                proposal_id=proposal_id,
+                create_backup=True
+            )
+            
+            # Send completion message with real results
+            await self.send_deletion_complete(
+                deleted_count=results['success'],
+                errors=results['failed']
+            )
+            
+            if results['failed'] > 0:
+                error_msg = f"⚠️ {results['failed']} emails failed to delete:\n"
+                for error in results['errors'][:5]:
+                    error_msg += f"• {error['subject']}: {error['error']}\n"
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=error_msg
+                )
+            
+        except Exception as e:
+            await self.send_error(f"Deletion failed: {str(e)}")
         
         # Clear proposal
         self.current_proposal = None
@@ -376,10 +535,22 @@ async def test_bot():
     # Initialize bot
     bot = EmailCleanupBot()
 
+    # Initialize Outlook connector
+    from core.outlook_connector import OutlookConnector
+    print("🔐 Authenticating with Outlook...")
+    outlook = OutlookConnector()
+    if not outlook.authenticate():
+        print("❌ Outlook authentication failed!")
+        return
+
     # Create deletion manager and connect to bot
     from core.deletion_manager import DeletionManager
     deletion_manager = DeletionManager(outlook)
     bot.deletion_manager = deletion_manager  # ← Connect deletion manager to bot
+
+    # Create Telegram application for command handling
+    from telegram.ext import Application
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Store bot in application context so handlers can access it
     application.bot_data['cleanup_bot'] = bot

@@ -117,7 +117,7 @@ async def analyze_command(update, context):
         
         # Send proposal using the SAME bot instance
         await bot.send_proposal(delete_emails, category_breakdown)
-        await update.message.reply_text("✅ Proposal sent! Use /yes, /no, /except, or /details")
+        await update.message.reply_text("✅ Proposal sent! Use /yes, /no, /delete_only, /except, or /details")
         
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -167,6 +167,7 @@ def main():
     application.add_handler(CommandHandler("test", test_command))
     application.add_handler(CommandHandler("yes", bot.handle_yes_command))
     application.add_handler(CommandHandler("no", bot.handle_no_command))
+    application.add_handler(CommandHandler("delete_only", bot.handle_delete_only_command))
     application.add_handler(CommandHandler("except", bot.handle_except_command))
     application.add_handler(CommandHandler("details", bot.handle_details_command))
     application.add_handler(CommandHandler("analyze", analyze_command)) 

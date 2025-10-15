@@ -158,7 +158,7 @@ async def run_analysis():
     print("✅ Authentication successful!\n")
     
     # Analyze emails
-    await analyzer.analyze_and_propose(limit=50, inbox_type='other')
+    await analyzer.analyze_and_propose(limit=10, inbox_type='other')
 
 
 if __name__ == "__main__":
