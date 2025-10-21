@@ -26,7 +26,7 @@ class DeletionManager:
     
     def delete_emails(self, emails, proposal_id=None, create_backup=True):
         """
-        Delete emails with backup
+        Delete emails with backup and inbox tracking
         
         Args:
             emails (list): List of email objects to delete
@@ -34,7 +34,7 @@ class DeletionManager:
             create_backup (bool): Whether to create backup before deletion
             
         Returns:
-            dict: Deletion results with success/failure counts
+            dict: Deletion results with success/failure counts and inbox stats
         """
         if not emails:
             print("⚠️ No emails to delete")
@@ -45,7 +45,13 @@ class DeletionManager:
         
         print(f"\n🗑️ Starting deletion process for {len(emails)} emails...")
         
+        # Step 0: Get inbox count BEFORE deletion
+        count_before = self.get_inbox_count()
+        if count_before:
+            print(f"📊 Current inbox: {count_before:,} emails")
+        
         # Step 1: Create backup
+        backup_file = None
         if create_backup:
             print(f"💾 Creating backup first...")
             backup_file = self.backup_manager.create_backup(emails, proposal_id)
@@ -86,6 +92,18 @@ class DeletionManager:
                 results['errors'].append({'email_id': email_id, 'subject': subject, 'error': str(e)})
                 print(f"   ❌ {i}/{len(emails)}: Error - {subject} ({e})")
         
+        # Step 3: Get inbox count AFTER deletion
+        count_after = self.get_inbox_count()
+        
+        # Calculate stats
+        if count_before and count_after:
+            actually_deleted = count_before - count_after
+            progress = (actually_deleted / count_before) * 100 if count_before > 0 else 0
+            
+            results['count_before'] = count_before
+            results['count_after'] = count_after
+            results['progress'] = round(progress, 2)
+        
         # Store for potential undo
         self.last_deletion = results
         
@@ -93,8 +111,14 @@ class DeletionManager:
         print(f"   Succeeded: {results['success']}")
         print(f"   Failed: {results['failed']}")
         
+        if count_before and count_after:
+            print(f"\n📊 Inbox Status:")
+            print(f"   Before: {count_before:,} emails")
+            print(f"   After: {count_after:,} emails")
+            print(f"   Progress: {progress:.2f}% of inbox cleaned")
+        
         return results
-    
+        
     def _delete_single_email(self, email_id):
         """
         Delete a single email via Microsoft Graph API
@@ -142,6 +166,16 @@ class DeletionManager:
             'backup_file': self.last_deletion['backup_file']
         }
 
+    def get_inbox_count(self, folder='OTHER'):
+        """Get current email count in folder"""
+        try:
+            response = self.graph_client.get(
+                f'/me/mailFolders/{folder}/messages/$count'
+            )
+            return response.json() if isinstance(response.json(), int) else 0
+        except Exception as e:
+            print(f"⚠️ Could not fetch inbox count: {e}")
+            return None
 
 # Test the deletion manager (DRY RUN - no actual deletion)
 if __name__ == "__main__":

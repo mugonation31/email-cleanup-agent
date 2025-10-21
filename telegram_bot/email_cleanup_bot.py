@@ -170,13 +170,21 @@ class EmailCleanupBot:
         except Exception as e:
             print(f"❌ Error sending confirmation: {e}")
     
-    async def send_deletion_complete(self, deleted_count, errors=0):
+    async def send_deletion_complete(self, deleted_count, errors=0, count_before=None, count_after=None, progress=None):
         """Send message when deletion is complete"""
         message = f"🎉 *DELETION COMPLETE!*\n\n"
         message += f"✅ Successfully deleted: {deleted_count} emails\n"
         
         if errors > 0:
             message += f"⚠️ Errors: {errors} emails\n"
+        
+            # NEW: Add inbox stats if available
+        if count_before and count_after:
+            message += f"\n📊 Inbox Status:\n"
+            message += f"   Before: {count_before:,} emails\n"
+            message += f"   After: {count_after:,} emails\n"
+            if progress:
+                message += f"   Progress: {progress:.2f}% cleaned\n"
         
         message += f"\n📊 Your inbox is now cleaner!\n"
         message += f"💾 Backup saved (can undo if needed)"
@@ -300,7 +308,10 @@ class EmailCleanupBot:
             # Send completion message with real results
             await self.send_deletion_complete(
                 deleted_count=results['success'],
-                errors=results['failed']
+                errors=results['failed'],
+                count_before=results.get('count_before'),
+                count_after=results.get('count_after'),
+                progress=results.get('progress')
             )
             
             if results['failed'] > 0:
@@ -390,7 +401,10 @@ class EmailCleanupBot:
             # Send completion message with real results
             await self.send_deletion_complete(
                 deleted_count=results['success'],
-                errors=results['failed']
+                errors=results['failed'],
+                count_before=results.get('count_before'),
+                count_after=results.get('count_after'),
+                progress=results.get('progress')
             )
             
             if results['failed'] > 0:
@@ -456,7 +470,10 @@ class EmailCleanupBot:
             # Send completion message with real results
             await self.send_deletion_complete(
                 deleted_count=results['success'],
-                errors=results['failed']
+                errors=results['failed'],
+                count_before=results.get('count_before'),
+                count_after=results.get('count_after'),
+                progress=results.get('progress')
             )
             
             if results['failed'] > 0:
