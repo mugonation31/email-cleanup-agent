@@ -169,7 +169,7 @@ class DeletionManager:
     def get_inbox_count(self, folder='OTHER'):
         """Get current email count in folder"""
         try:
-            response = self.graph_client.get(
+            response = self.outlook.graph_client.get(
                 f'/me/mailFolders/{folder}/messages/$count'
             )
             return response.json() if isinstance(response.json(), int) else 0
