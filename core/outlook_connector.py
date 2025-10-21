@@ -169,7 +169,7 @@ class OutlookConnector:
             print(f"❌ Unexpected Error getting inbox stats: {e}")
             return None
     
-    def get_emails(self, limit=100, inbox_type='both'):
+    def get_emails(self, limit=500, inbox_type='both'):
         """
         Fetch emails from inbox
 

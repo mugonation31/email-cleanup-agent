@@ -155,7 +155,7 @@ def test_all_agents_on_real_emails():
         print("🎯 TESTING ALL AGENTS ON OTHER INBOX")
         print("="*100)
         
-        other_emails = connector.get_emails(limit=100, inbox_type='other')
+        other_emails = connector.get_emails(limit=500, inbox_type='other')
         
         if not other_emails:
             print("❌ No emails fetched!")
@@ -272,7 +272,7 @@ def test_unwanted_agent_on_real_emails():
     print("🎯 TESTING UNWANTED AGENT ON OTHER INBOX")
     print("="*100)
     
-    other_emails = connector.get_emails(limit=100, inbox_type='other')
+    other_emails = connector.get_emails(limit=500, inbox_type='other')
     
     if not other_emails:
         print("❌ No emails fetched!")
@@ -372,7 +372,7 @@ def test_multi_agent_on_real_emails():
     print("🎯 TESTING MULTI-AGENT SYSTEM ON OTHER INBOX")
     print("="*100)
     
-    other_emails = connector.get_emails(limit=100, inbox_type='other')
+    other_emails = connector.get_emails(limit=500, inbox_type='other')
     
     if not other_emails:
         print("❌ No emails fetched!")
