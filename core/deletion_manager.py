@@ -46,10 +46,13 @@ class DeletionManager:
         print(f"\n🗑️ Starting deletion process for {len(emails)} emails...")
         
         # Step 0: Get inbox count BEFORE deletion
-        count_before = self.get_inbox_count()
-        if count_before:
-            print(f"📊 Current inbox: {count_before:,} emails")
-        
+        # Step 0: Get inbox counts BEFORE deletion
+        other_before = self.get_inbox_count('OTHER')
+        total_before = self.get_inbox_count('TOTAL')
+
+        if other_before and total_before:
+            print(f"📊 Current inbox - Other: {other_before:,} | Total: {total_before:,} emails")
+                
         # Step 1: Create backup
         backup_file = None
         if create_backup:
@@ -92,18 +95,21 @@ class DeletionManager:
                 results['errors'].append({'email_id': email_id, 'subject': subject, 'error': str(e)})
                 print(f"   ❌ {i}/{len(emails)}: Error - {subject} ({e})")
         
-        # Step 3: Get inbox count AFTER deletion
-        count_after = self.get_inbox_count()
-        
+        # Step 3: Get inbox counts AFTER deletion
+        other_after = self.get_inbox_count('OTHER')
+        total_after = self.get_inbox_count('TOTAL')
+
         # Calculate stats
-        if count_before and count_after:
-            actually_deleted = count_before - count_after
-            progress = (actually_deleted / count_before) * 100 if count_before > 0 else 0
+        if other_before and other_after and total_before and total_after:
+            other_deleted = other_before - other_after
+            total_progress = (other_deleted / total_before) * 100 if total_before > 0 else 0
             
-            results['count_before'] = count_before
-            results['count_after'] = count_after
-            results['progress'] = round(progress, 2)
-        
+            results['other_before'] = other_before
+            results['other_after'] = other_after
+            results['total_before'] = total_before
+            results['total_after'] = total_after
+            results['progress'] = round(total_progress, 2)
+                
         # Store for potential undo
         self.last_deletion = results
         
@@ -111,13 +117,16 @@ class DeletionManager:
         print(f"   Succeeded: {results['success']}")
         print(f"   Failed: {results['failed']}")
         
-        if count_before and count_after:
+        if other_before and other_after and total_before and total_after:
             print(f"\n📊 Inbox Status:")
-            print(f"   Before: {count_before:,} emails")
-            print(f"   After: {count_after:,} emails")
-            print(f"   Progress: {progress:.2f}% of inbox cleaned")
-        
-        return results
+            print(f"   Other (before): {other_before:,} emails")
+            print(f"   Other (after): {other_after:,} emails")
+            print(f"   Deleted: {results['success']:,} emails")
+            print(f"")
+            print(f"   📬 Total Inbox: {total_after:,} emails")
+            print(f"   Progress: {total_progress:.2f}% of total inbox cleaned")
+                
+            return results
         
     def _delete_single_email(self, email_id):
         """
@@ -167,12 +176,50 @@ class DeletionManager:
         }
 
     def get_inbox_count(self, folder='OTHER'):
-        """Get current email count in folder"""
+        """
+        Get current email count in folder
+        
+        Args:
+            folder: 'OTHER', 'FOCUSED', or 'TOTAL'
+        
+        Returns:
+            int: Email count or None if error
+        """
         try:
-            response = self.outlook.graph_client.get(
-                f'/me/mailFolders/{folder}/messages/$count'
-            )
-            return response.json() if isinstance(response.json(), int) else 0
+            # Access token from OutlookConnector
+            if not self.outlook.token:
+                print(f"⚠️ No authentication token available")
+                return None
+            
+            headers = {
+                'Authorization': f'Bearer {self.outlook.token}',
+                'Content-Type': 'application/json'
+            }
+            
+            import requests
+            
+            # Build the correct URL based on folder type
+            if folder == 'OTHER':
+                url = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$filter=inferenceClassification eq \'other\'&$count=true&$top=1'
+            elif folder == 'FOCUSED':
+                url = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$filter=inferenceClassification eq \'focused\'&$count=true&$top=1'
+            elif folder == 'TOTAL':
+                url = 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/$count'
+            else:
+                url = 'https://graph.microsoft.com/v1.0/me/messages/$count'
+            
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                if folder in ['OTHER', 'FOCUSED']:
+                    count = response.json().get('@odata.count', 0)
+                else:
+                    count = int(response.text)
+                return count
+            else:
+                print(f"⚠️ Could not fetch inbox count: Status {response.status_code}")
+                return None
+                
         except Exception as e:
             print(f"⚠️ Could not fetch inbox count: {e}")
             return None
