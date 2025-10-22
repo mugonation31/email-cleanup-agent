@@ -97,6 +97,31 @@ class OutlookConnector:
             print(f"Description: {result.get('error_description')}")
             return False
     
+    def refresh_token_silent(self):
+        """Silently refresh token if possible"""
+        try:
+            accounts = self.app.get_accounts()
+            if accounts:
+                scopes = [
+                    "https://graph.microsoft.com/Mail.ReadWrite",
+                    "https://graph.microsoft.com/Mail.Send",
+                    "https://graph.microsoft.com/User.Read"
+                ]
+                result = self.app.acquire_token_silent(scopes, account=accounts[0])
+                if result and "access_token" in result:
+                    self.token = result['access_token']
+                    
+                    # Save refreshed cache
+                    if self.cache.has_state_changed:
+                        with open(self.cache_file, 'w') as f:
+                            f.write(self.cache.serialize())
+                    
+                    return True
+            return False
+        except Exception as e:
+            print(f"⚠️ Token refresh failed: {e}")
+            return False
+    
     def validate_token(self):
         """Test if the current token is valid by making a simple API call"""
         if not self.token:
@@ -169,7 +194,7 @@ class OutlookConnector:
             print(f"❌ Unexpected Error getting inbox stats: {e}")
             return None
     
-    def get_emails(self, limit=500, inbox_type='both'):
+    def get_emails(self, limit=1000, inbox_type='both'):
         """
         Fetch emails from inbox
 
@@ -177,6 +202,9 @@ class OutlookConnector:
             limit: Number of emails to fetch
             inbox_type: 'focused', 'other', or 'both' (default)
         """
+        # REFRESH TOKEN FIRST
+        self.refresh_token_silent()
+
         if not self.token:
             print("❌ Not authenticated. Call authenticate() first.")
             return None

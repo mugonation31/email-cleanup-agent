@@ -24,6 +24,36 @@ class DeletionManager:
         
         print("🗑️ Deletion Manager initialized")
     
+    def _ensure_valid_token(self):
+        """Ensure we have a valid token before operations"""
+        try:
+            # Try to refresh token silently
+            accounts = self.outlook.app.get_accounts()
+            if accounts:
+                scopes = [
+                    "https://graph.microsoft.com/Mail.ReadWrite",
+                    "https://graph.microsoft.com/Mail.Send",
+                    "https://graph.microsoft.com/User.Read"
+                ]
+                result = self.outlook.app.acquire_token_silent(scopes, account=accounts[0])
+                if result and "access_token" in result:
+                    self.outlook.token = result['access_token']
+                    
+                    # Save refreshed cache
+                    if self.outlook.cache.has_state_changed:
+                        with open(self.outlook.cache_file, 'w') as f:
+                            f.write(self.outlook.cache.serialize())
+                    
+                    print("🔄 Token refreshed successfully")
+                    return True
+            
+            print("⚠️ Could not refresh token - may need re-authentication")
+            return False
+            
+        except Exception as e:
+            print(f"⚠️ Token refresh failed: {e}")
+            return False
+        
     def delete_emails(self, emails, proposal_id=None, create_backup=True):
         """
         Delete emails with backup and inbox tracking
@@ -39,6 +69,9 @@ class DeletionManager:
         if not emails:
             print("⚠️ No emails to delete")
             return {'success': 0, 'failed': 0, 'errors': []}
+        
+            # REFRESH TOKEN BEFORE STARTING
+        self._ensure_valid_token()
         
         if not proposal_id:
             proposal_id = datetime.now().strftime('%Y%m%d_%H%M%S')
