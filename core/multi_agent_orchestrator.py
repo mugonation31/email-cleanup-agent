@@ -152,6 +152,7 @@ class MultiAgentOrchestrator:
             "unwanted_analysis": unwanted_analysis,
             "reasoning_chain": [reasoning]
         }
+    
     def _decision_node(self, state: EmailAnalysisState) -> EmailAnalysisState:
         """
         The Judge: Makes final decision based on all agent inputs

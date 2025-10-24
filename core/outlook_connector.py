@@ -194,17 +194,81 @@ class OutlookConnector:
             print(f"❌ Unexpected Error getting inbox stats: {e}")
             return None
     
+    def _fetch_with_pagination(self, endpoint, headers, limit, filter_clause, inbox_label):
+        """
+        Fetch emails with pagination support
+        
+        Args:
+            endpoint: Graph API endpoint URL
+            headers: Authorization headers
+            limit: Total number of emails to fetch
+            filter_clause: OData filter (e.g., "inferenceClassification eq 'other'")
+            inbox_label: Label to mark emails ('focused' or 'other')
+        
+        Returns:
+            list: Emails with _inbox_type label
+        """
+        all_emails = []
+        
+        # Initial params - Graph API max is 500 per request
+        params = {
+            '$select': 'id,subject,from,receivedDateTime,hasAttachments,bodyPreview',
+            '$top': min(500, limit),
+            '$filter': filter_clause
+        }
+        
+        url = endpoint
+        fetched_count = 0
+        
+        while len(all_emails) < limit:
+            try:
+                response = requests.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                emails = data.get('value', [])
+                
+                # Mark emails with inbox type
+                for email in emails:
+                    email['_inbox_type'] = inbox_label
+                
+                all_emails.extend(emails)
+                fetched_count += len(emails)
+                
+                # Show progress
+                print(f"   Fetched {fetched_count}/{limit}... ({len(emails)} in this batch)")
+                
+                # Check if there's a next page
+                next_link = data.get('@odata.nextLink')
+                
+                if not next_link or len(all_emails) >= limit:
+                    break
+                
+                # Use nextLink for next request (already contains all params)
+                url = next_link
+                params = {}  # nextLink URL already has params embedded
+                
+            except requests.exceptions.HTTPError as e:
+                print(f"\n⚠️ HTTP Error during pagination: {e}")
+                break
+            except Exception as e:
+                print(f"\n⚠️ Error during pagination: {e}")
+                break
+        
+        # Trim to exact limit requested
+        return all_emails[:limit]
+
     def get_emails(self, limit=1000, inbox_type='both'):
         """
-        Fetch emails from inbox
-
+        Fetch emails from inbox with pagination support
+        
         Args:
-            limit: Number of emails to fetch
+            limit: Number of emails to fetch (can exceed 500 with pagination)
             inbox_type: 'focused', 'other', or 'both' (default)
         """
-        # REFRESH TOKEN FIRST
+        # Refresh token first
         self.refresh_token_silent()
-
+        
         if not self.token:
             print("❌ Not authenticated. Call authenticate() first.")
             return None
@@ -214,77 +278,59 @@ class OutlookConnector:
             'Content-Type': 'application/json'
         }
         
-        # Use the inbox endpoint (not just /me/messages) for inferenceClassification filtering
+        # Use the inbox endpoint for inferenceClassification filtering
         endpoint = f"{GRAPH_API_ENDPOINT}/me/mailFolders/inbox/messages"
-        
-        # Base parameters for all requests
-        # Note: Don't include inferenceClassification in $select when filtering by it
-        # Note: $orderby may not work with inferenceClassification filter
-        base_params = {
-            '$select': 'id,subject,from,receivedDateTime,hasAttachments,bodyPreview'
-        }
         
         emails = []
         
         try:
             if inbox_type == 'focused':
                 print(f"\n📧 Fetching {limit} emails from FOCUSED inbox...")
-                params = {**base_params, '$top': limit, '$filter': "inferenceClassification eq 'focused'"}
-                
-                response = requests.get(endpoint, headers=headers, params=params)
-                response.raise_for_status()
-                emails = response.json().get('value', [])
-                
-                # Mark emails with inbox type for display
-                for email in emails:
-                    email['_inbox_type'] = 'focused'
+                emails = self._fetch_with_pagination(
+                    endpoint=endpoint,
+                    headers=headers,
+                    limit=limit,
+                    filter_clause="inferenceClassification eq 'focused'",
+                    inbox_label='focused'
+                )
                 
             elif inbox_type == 'other':
                 print(f"\n📧 Fetching {limit} emails from OTHER inbox...")
-                params = {**base_params, '$top': limit, '$filter': "inferenceClassification eq 'other'"}
-                
-                response = requests.get(endpoint, headers=headers, params=params)
-                response.raise_for_status()
-                emails = response.json().get('value', [])
-                
-                # Mark emails with inbox type for display
-                for email in emails:
-                    email['_inbox_type'] = 'other'
+                emails = self._fetch_with_pagination(
+                    endpoint=endpoint,
+                    headers=headers,
+                    limit=limit,
+                    filter_clause="inferenceClassification eq 'other'",
+                    inbox_label='other'
+                )
                 
             elif inbox_type == 'both':
                 print(f"\n📧 Fetching {limit//2} emails from FOCUSED and {limit//2} from OTHER...")
                 
                 # Get from Focused
-                focused_params = {**base_params, '$top': limit//2, '$filter': "inferenceClassification eq 'focused'"}
-                focused_response = requests.get(endpoint, headers=headers, params=focused_params)
-                focused_response.raise_for_status()
-                focused_emails = focused_response.json().get('value', [])
-                
-                # Mark focused emails
-                for email in focused_emails:
-                    email['_inbox_type'] = 'focused'
+                print("   Fetching FOCUSED emails...")
+                focused_emails = self._fetch_with_pagination(
+                    endpoint=endpoint,
+                    headers=headers,
+                    limit=limit//2,
+                    filter_clause="inferenceClassification eq 'focused'",
+                    inbox_label='focused'
+                )
                 
                 # Get from Other
-                other_params = {**base_params, '$top': limit//2, '$filter': "inferenceClassification eq 'other'"}
-                other_response = requests.get(endpoint, headers=headers, params=other_params)
-                other_response.raise_for_status()
-                other_emails = other_response.json().get('value', [])
-                
-                # Mark other emails
-                for email in other_emails:
-                    email['_inbox_type'] = 'other'
+                print("   Fetching OTHER emails...")
+                other_emails = self._fetch_with_pagination(
+                    endpoint=endpoint,
+                    headers=headers,
+                    limit=limit//2,
+                    filter_clause="inferenceClassification eq 'other'",
+                    inbox_label='other'
+                )
                 
                 emails = focused_emails + other_emails
             
             print(f"✅ Successfully fetched {len(emails)} emails!")
             return emails
-            
-        except requests.exceptions.HTTPError as e:
-            print(f"\n❌ HTTP Error: {e}")
-            if 'response' in locals():
-                print(f"Status Code: {response.status_code}")
-                print(f"Response: {response.text}")
-            return None
             
         except Exception as e:
             print(f"❌ Unexpected Error: {e}")

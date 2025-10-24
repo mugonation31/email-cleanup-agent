@@ -88,7 +88,7 @@ async def analyze_command(update, context):
     
     # Fetch emails
     try:
-        emails = outlook.get_emails(limit=500, inbox_type='other')
+        emails = outlook.get_emails(limit=1000, inbox_type='other')
         
         if not emails:
             await update.message.reply_text("❌ No emails fetched!")
